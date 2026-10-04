@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright 2025 Carabiner Systems, Inc
+// SPDX-FileCopyrightText: Copyright 2025 The Policy Labs Project Contributors
 // SPDX-License-Identifier: Apache-2.0
 
 package policy
@@ -11,8 +11,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/carabiner-dev/attestation"
 	"github.com/carabiner-dev/vcslocator"
+	"github.com/policylabs/attestation"
 	"sigs.k8s.io/release-utils/http"
 
 	api "github.com/policylabs/policy/api/v1"

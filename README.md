@@ -537,7 +537,7 @@ Contributions are welcome! Please:
 
 ## 📄 License
 
-This project is Copyright &copy; 2025 by Carabiner Systems, Inc and released under the terms of the [Apache 2.0 license](LICENSE).
+This project is Copyright &copy; 2025 by The Policy Labs Project Contributors and released under the terms of the [Apache 2.0 license](LICENSE).
 
 ## 🙏 Acknowledgments
 

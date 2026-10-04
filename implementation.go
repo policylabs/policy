@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright 2025 Carabiner Systems, Inc
+// SPDX-FileCopyrightText: Copyright 2025 The Policy Labs Project Contributors
 // SPDX-License-Identifier: Apache-2.0
 
 package policy
@@ -11,11 +11,11 @@ import (
 	"io"
 
 	"buf.build/go/protovalidate"
-	"github.com/carabiner-dev/attestation"
-	"github.com/carabiner-dev/collector/envelope"
 	"github.com/carabiner-dev/hasher"
 	"github.com/hjson/hjson-go/v4"
 	intoto "github.com/in-toto/attestation/go/v1"
+	"github.com/policylabs/attestation"
+	"github.com/policylabs/collector/envelope"
 	sapi "github.com/policylabs/signer/api/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 
