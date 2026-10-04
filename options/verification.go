@@ -4,7 +4,7 @@
 package options
 
 import (
-	"github.com/carabiner-dev/signer/key"
+	"github.com/policylabs/signer/key"
 )
 
 type VerificationOptions struct {

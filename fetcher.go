@@ -14,7 +14,7 @@ import (
 	"github.com/carabiner-dev/vcslocator"
 	"sigs.k8s.io/release-utils/http"
 
-	"github.com/carabiner-dev/policy/options"
+	"github.com/policylabs/policy/options"
 )
 
 type PolicyFetcher interface {

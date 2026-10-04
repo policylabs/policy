@@ -8,8 +8,8 @@ import (
 	"fmt"
 
 	"github.com/carabiner-dev/attestation"
-	"github.com/carabiner-dev/signer/key"
 	intoto "github.com/in-toto/attestation/go/v1"
+	"github.com/policylabs/signer/key"
 	"google.golang.org/protobuf/proto"
 )
 

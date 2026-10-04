@@ -4,8 +4,8 @@
 package v1
 
 import (
-	sapi "github.com/carabiner-dev/signer/api/v1"
 	intoto "github.com/in-toto/attestation/go/v1"
+	sapi "github.com/policylabs/signer/api/v1"
 )
 
 var (

@@ -24,8 +24,8 @@ import (
 	"github.com/nozzle/throttler"
 	"google.golang.org/protobuf/proto"
 
-	api "github.com/carabiner-dev/policy/api/v1"
-	"github.com/carabiner-dev/policy/options"
+	api "github.com/policylabs/policy/api/v1"
+	"github.com/policylabs/policy/options"
 )
 
 // RefUpdate describes one external reference whose upstream content has

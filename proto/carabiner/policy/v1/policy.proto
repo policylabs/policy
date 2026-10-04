@@ -10,7 +10,7 @@ import "google/protobuf/struct.proto";
 import "in_toto_attestation/v1/resource_descriptor.proto";
 import "carabiner/signer/v1/identity.proto";
 
-option go_package = "github.com/carabiner-dev/policy/api/v1";
+option go_package = "github.com/policylabs/policy/api/v1";
 
 message PolicySet {
     // ID is the policySet identifier

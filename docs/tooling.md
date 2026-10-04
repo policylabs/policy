@@ -204,7 +204,7 @@ policySet, verification, err := parser.ParseVerifyPolicySet(data, opts)
 Parse options control parser behavior:
 
 ```go
-import "github.com/carabiner-dev/policy/options"
+import "github.com/policylabs/policy/options"
 
 // Verify signatures
 opts := options.WithVerifySignatures(true)
@@ -694,7 +694,7 @@ package main
 
 import (
   "fmt"
-  "github.com/carabiner-dev/policy"
+  "github.com/policylabs/policy"
 )
 
 func main() {
@@ -734,8 +734,8 @@ fmt.Printf("Compiled remote PolicySet: %s\n", set.GetId())
 
 ```go
 import (
-  "github.com/carabiner-dev/policy"
-  "github.com/carabiner-dev/policy/options"
+  "github.com/policylabs/policy"
+  "github.com/policylabs/policy/options"
 )
 
 parser := policy.NewParser()
@@ -764,7 +764,7 @@ if verification != nil && verification.GetSignature().GetVerified() {
 ### Example 4: Custom Compiler Options
 
 ```go
-import "github.com/carabiner-dev/policy"
+import "github.com/policylabs/policy"
 
 // Create compiler with custom options
 compiler := &policy.Compiler{
@@ -888,7 +888,7 @@ Once you've compiled a PolicySet, you pass it to the AMPEL policy engine for eva
 ```go
 import (
   "context"
-  "github.com/carabiner-dev/policy"
+  "github.com/policylabs/policy"
   "github.com/carabiner-dev/ampel/pkg/verifier"
   "github.com/carabiner-dev/attestation"
 )

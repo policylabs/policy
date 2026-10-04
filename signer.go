@@ -9,13 +9,13 @@ import (
 	"os"
 
 	"github.com/carabiner-dev/collector/statement/intoto"
-	"github.com/carabiner-dev/signer"
-	soptions "github.com/carabiner-dev/signer/options"
+	"github.com/policylabs/signer"
+	soptions "github.com/policylabs/signer/options"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	v1 "github.com/carabiner-dev/policy/api/v1"
-	"github.com/carabiner-dev/policy/options"
-	"github.com/carabiner-dev/policy/predicate"
+	v1 "github.com/policylabs/policy/api/v1"
+	"github.com/policylabs/policy/options"
+	"github.com/policylabs/policy/predicate"
 )
 
 // NewSigner returns a policy signer with the specified options

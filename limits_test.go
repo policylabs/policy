@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/carabiner-dev/policy/options"
+	"github.com/policylabs/policy/options"
 )
 
 func TestLimits_InputSizeExceeded(t *testing.T) {

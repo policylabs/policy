@@ -14,13 +14,13 @@ import (
 	"github.com/carabiner-dev/attestation"
 	"github.com/carabiner-dev/collector/envelope"
 	"github.com/carabiner-dev/hasher"
-	sapi "github.com/carabiner-dev/signer/api/v1"
 	"github.com/hjson/hjson-go/v4"
 	intoto "github.com/in-toto/attestation/go/v1"
+	sapi "github.com/policylabs/signer/api/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	v1 "github.com/carabiner-dev/policy/api/v1"
-	"github.com/carabiner-dev/policy/options"
+	v1 "github.com/policylabs/policy/api/v1"
+	"github.com/policylabs/policy/options"
 )
 
 type parserImplementation interface {

@@ -15,8 +15,8 @@ import (
 	"github.com/carabiner-dev/vcslocator"
 	"sigs.k8s.io/release-utils/http"
 
-	api "github.com/carabiner-dev/policy/api/v1"
-	"github.com/carabiner-dev/policy/options"
+	api "github.com/policylabs/policy/api/v1"
+	"github.com/policylabs/policy/options"
 )
 
 // PolicyOrSet takes a policy or policyset and returns the one that is not nill

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	api "github.com/carabiner-dev/policy/api/v1"
+	api "github.com/policylabs/policy/api/v1"
 )
 
 func TestExtractRemotePolicyGroupReferences(t *testing.T) {

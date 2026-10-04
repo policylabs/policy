@@ -32,7 +32,7 @@ if [ -d "vendor/signer" ]; then
   echo "Reusing vendored carabiner/signer directory"
 else
   echo "Cloning carabiner/signer to vendor/"
-  git clone --depth=1 https://github.com/carabiner-dev/signer vendor/signer
+  git clone --depth=1 https://github.com/policylabs/signer vendor/signer
   cloned_signer_repo=1
 fi
 
