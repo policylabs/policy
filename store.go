@@ -12,7 +12,7 @@ import (
 	intoto "github.com/in-toto/attestation/go/v1"
 	"github.com/sirupsen/logrus"
 
-	api "github.com/carabiner-dev/policy/api/v1"
+	api "github.com/policylabs/policy/api/v1"
 )
 
 // Storage backend is an interface that fronts systems that store and index policies

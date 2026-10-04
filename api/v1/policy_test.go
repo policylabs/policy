@@ -6,8 +6,8 @@ package v1
 import (
 	"testing"
 
-	sapi "github.com/carabiner-dev/signer/api/v1"
 	intoto "github.com/in-toto/attestation/go/v1"
+	sapi "github.com/policylabs/signer/api/v1"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )

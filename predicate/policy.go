@@ -9,7 +9,7 @@ import (
 	"github.com/carabiner-dev/attestation"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	v1 "github.com/carabiner-dev/policy/api/v1"
+	v1 "github.com/policylabs/policy/api/v1"
 )
 
 const PolicyPredicateType attestation.PredicateType = "https://carabiner.dev/ampel/policy/v0"

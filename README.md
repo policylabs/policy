@@ -1,6 +1,6 @@
 # 🔴🟡🟢 AMPEL Policy Framework
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/carabiner-dev/policy.svg)](https://pkg.go.dev/github.com/carabiner-dev/policy)
+[![Go Reference](https://pkg.go.dev/badge/github.com/policylabs/policy.svg)](https://pkg.go.dev/github.com/policylabs/policy)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 The AMPEL Policy Framework provides the data structures, tooling, and libraries for defining, distributing, and managing security policies that evaluate software supply chain attestations.
@@ -12,7 +12,7 @@ This framework is used by the [AMPEL policy engine](https://github.com/carabiner
 ### Installation
 
 ```bash
-go get github.com/carabiner-dev/policy
+go get github.com/policylabs/policy
 ```
 
 ### Parse and Compile a Policy
@@ -22,7 +22,7 @@ package main
 
 import (
     "fmt"
-    "github.com/carabiner-dev/policy"
+    "github.com/policylabs/policy"
 )
 
 func main() {
@@ -77,7 +77,7 @@ func main() {
 
 **Technical References:**
 - **[Protocol Buffer Definitions](proto/carabiner/policy/v1/policy.proto)** - Schema definitions
-- **[Go Package Documentation](https://pkg.go.dev/github.com/carabiner-dev/policy)** - API reference
+- **[Go Package Documentation](https://pkg.go.dev/github.com/policylabs/policy)** - API reference
 
 ## ✨ Key Features
 
@@ -363,7 +363,7 @@ fmt.Printf("Compiled: %s\n", set.GetId())
 ### Parse with Signature Verification
 
 ```go
-import "github.com/carabiner-dev/policy/options"
+import "github.com/policylabs/policy/options"
 
 parser := policy.NewParser()
 
@@ -454,7 +454,7 @@ This framework provides the policy definitions and tooling. To **evaluate** poli
 ```go
 import (
     "context"
-    "github.com/carabiner-dev/policy"
+    "github.com/policylabs/policy"
     "github.com/carabiner-dev/ampel/pkg/verifier"
 )
 

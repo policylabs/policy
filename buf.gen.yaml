@@ -12,7 +12,7 @@ plugins:
     out: .
     opt:
       - paths=import
-      - module=github.com/carabiner-dev/policy
+      - module=github.com/policylabs/policy
     # include_imports: false
 #inputs:
 #  - git_repo: https://github.com/in-toto/attestation

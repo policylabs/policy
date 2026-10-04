@@ -11,7 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
 
-	api "github.com/carabiner-dev/policy/api/v1"
+	api "github.com/policylabs/policy/api/v1"
 )
 
 type compilerImplementation interface {

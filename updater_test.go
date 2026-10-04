@@ -14,7 +14,7 @@ import (
 	intoto "github.com/in-toto/attestation/go/v1"
 	"github.com/stretchr/testify/require"
 
-	api "github.com/carabiner-dev/policy/api/v1"
+	api "github.com/policylabs/policy/api/v1"
 )
 
 func TestDigestsMatch(t *testing.T) {
