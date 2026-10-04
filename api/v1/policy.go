@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/carabiner-dev/attestation"
 	"github.com/carabiner-dev/vcslocator"
 	intoto "github.com/in-toto/attestation/go/v1"
+	"github.com/policylabs/attestation"
 	"github.com/policylabs/signer/key"
 	"google.golang.org/protobuf/proto"
 )

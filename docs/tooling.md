@@ -890,7 +890,7 @@ import (
   "context"
   "github.com/policylabs/policy"
   "github.com/carabiner-dev/ampel/pkg/verifier"
-  "github.com/carabiner-dev/attestation"
+  "github.com/policylabs/attestation"
 )
 
 // Compile the policy

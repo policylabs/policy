@@ -8,7 +8,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/carabiner-dev/collector/statement/intoto"
+	"github.com/policylabs/collector/statement/intoto"
 	"github.com/policylabs/signer"
 	soptions "github.com/policylabs/signer/options"
 	"google.golang.org/protobuf/encoding/protojson"

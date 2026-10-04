@@ -6,7 +6,7 @@ package predicate
 import (
 	"encoding/json"
 
-	"github.com/carabiner-dev/attestation"
+	"github.com/policylabs/attestation"
 	"google.golang.org/protobuf/encoding/protojson"
 
 	v1 "github.com/policylabs/policy/api/v1"

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/carabiner-dev/attestation"
 	"github.com/carabiner-dev/vcslocator"
+	"github.com/policylabs/attestation"
 	"sigs.k8s.io/release-utils/http"
 
 	api "github.com/policylabs/policy/api/v1"
