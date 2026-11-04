@@ -68,6 +68,14 @@ func (ref *PolicyRef) GetSourceURL() string {
 
 // Validate returns an error if the reference is not valid
 func (ref *PolicyRef) Validate() error {
+	return ValidateReference(ref)
+}
+
+// ValidateReference returns an error when a remote reference is not pinned:
+// a reference by URL needs a digest in a known algorithm, a reference by VCS
+// locator a digest or a commit. A compiler asked to require pinned
+// references refuses what fails here (RequirePinnedReferences).
+func ValidateReference(ref RemoteReference) error {
 	errs := []error{}
 
 	// If the download URL is not a VCS locator, the policy MUST have at least one hash

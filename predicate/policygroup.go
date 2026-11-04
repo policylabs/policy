@@ -89,5 +89,5 @@ func (grp *PolicyGroup) SetType(attestation.PredicateType) error {
 }
 
 func (grp *PolicyGroup) GetType() attestation.PredicateType {
-	return PolicyPredicateType
+	return PolicyGroupPredicateType
 }

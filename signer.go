@@ -29,32 +29,41 @@ func NewSigner(funcs ...options.SignerOptFn) *Signer {
 	}
 }
 
-// Signer is the policy/policy set signer object.
-// Signing is done by wrapping the policies in an in-toto statement and the
-// predicate/* wrappers before passing them to the sigstore signer.
+// Signer is the policy material signer: a Policy, a PolicySet or a
+// PolicyGroup. Signing is done by wrapping the material in an in-toto
+// statement through the predicate/* wrappers, which give it the kind's
+// predicate type, before passing it to the sigstore signer.
 type Signer struct {
 	Options options.SignerOptions
 }
 
-// SignPolicyData signs raw policy data
-func (ps *Signer) SignPolicyData(data []byte, w io.Writer, funcs ...options.SignerOptFn) error {
-	set, pcy, err := NewParser().ParsePolicyOrSet(data)
+// Statement wraps raw policy material of any kind in the in-toto statement
+// that gets signed: the predicate is the material, the predicate type the
+// kind's (predicate.PolicyPredicateType, PolicySetPredicateType,
+// PolicyGroupPredicateType).
+func (ps *Signer) Statement(data []byte) (*intoto.Statement, error) {
+	set, pcy, grp, _, err := NewParser().ParseVerifyPolicyOrSetOrGroup(data, options.WithVerifySignatures(false))
 	if err != nil {
-		return fmt.Errorf("parsing policy material: %w", err)
+		return nil, fmt.Errorf("parsing policy material: %w", err)
 	}
 
-	// Assemble the in-toto wrapper
-	var statement *intoto.Statement
-	material := PolicyOrSet(set, pcy)
-	switch m := material.(type) {
+	switch m := PolicyOrSetOrGroup(set, pcy, grp).(type) {
 	case *v1.PolicySet:
-		statement = intoto.NewStatement(
-			intoto.WithPredicate(&predicate.PolicySet{Parsed: m}),
-		)
+		return intoto.NewStatement(intoto.WithPredicate(&predicate.PolicySet{Parsed: m})), nil
 	case *v1.Policy:
-		statement = intoto.NewStatement(
-			intoto.WithPredicate(&predicate.Policy{Parsed: m}),
-		)
+		return intoto.NewStatement(intoto.WithPredicate(&predicate.Policy{Parsed: m})), nil
+	case *v1.PolicyGroup:
+		return intoto.NewStatement(intoto.WithPredicate(&predicate.PolicyGroup{Parsed: m})), nil
+	default:
+		return nil, fmt.Errorf("unknown policy material %T", m)
+	}
+}
+
+// SignPolicyData signs raw policy material of any kind.
+func (ps *Signer) SignPolicyData(data []byte, w io.Writer, funcs ...options.SignerOptFn) error {
+	statement, err := ps.Statement(data)
+	if err != nil {
+		return err
 	}
 
 	stmtJson, err := statement.ToJson()

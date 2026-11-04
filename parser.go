@@ -4,16 +4,14 @@
 package policy
 
 import (
-	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"sync"
 
-	"github.com/carabiner-dev/vcslocator"
 	"github.com/policylabs/attestation"
-	"sigs.k8s.io/release-utils/http"
 
 	api "github.com/policylabs/policy/api/v1"
 	"github.com/policylabs/policy/options"
@@ -51,8 +49,18 @@ func readFileWithLimit(path string, maxSize int64) ([]byte, error) {
 // NewParser creates a new policy parser
 func NewParser() *Parser {
 	return &Parser{
-		impl: &defaultParserImplementationV1{},
+		impl:    &defaultParserImplementationV1{},
+		Fetcher: NewFetcher(),
 	}
+}
+
+// fetcher returns the parser's fetcher, the default when a Parser was
+// built as a literal.
+func (p *Parser) fetcher() *Fetcher {
+	if p.Fetcher == nil {
+		p.Fetcher = NewFetcher()
+	}
+	return p.Fetcher
 }
 
 // Parser implements methods to read the policy and policy set json files.
@@ -60,6 +68,9 @@ func NewParser() *Parser {
 // to assemble policies with external/remote references.
 type Parser struct {
 	impl parserImplementation
+	// Fetcher reads remote locations handed to OpenVerify; register more
+	// scheme fetchers on it to open other locations.
+	Fetcher *Fetcher
 }
 
 // Open opens a Policy or policySet. This function supports remote locations
@@ -74,18 +85,12 @@ func (p *Parser) OpenVerify(location string, funcs ...options.OptFn) (set *api.P
 		}
 	}
 
-	// Open de PolicySet/Policy data from files or remote locations
+	// Open the PolicySet/Policy data from a remote location a fetcher
+	// handles, or from a file.
 	var data []byte
-	switch {
-	case strings.HasPrefix(location, "git+https://"), strings.HasPrefix(location, "git+ssh://"):
-		var b bytes.Buffer
-		if err := vcslocator.CopyFile(location, &b); err != nil {
-			return nil, nil, nil, nil, fmt.Errorf("copying data from repository: %w", err)
-		}
-		data = b.Bytes()
-	case strings.HasPrefix(location, "https://"):
-		data, err = http.NewAgent().Get(location)
-	default:
+	if p.fetcher().Supports(location) {
+		data, err = p.fetcher().Get(context.Background(), location)
+	} else {
 		data, err = readFileWithLimit(location, opts.Limits.MaxInputSize)
 	}
 

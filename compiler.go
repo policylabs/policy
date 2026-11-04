@@ -4,16 +4,13 @@
 package policy
 
 import (
-	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
-	"github.com/carabiner-dev/vcslocator"
 	"github.com/policylabs/attestation"
-	"sigs.k8s.io/release-utils/http"
 
 	api "github.com/policylabs/policy/api/v1"
 	"github.com/policylabs/policy/options"
@@ -48,6 +45,13 @@ type CompilerOptions struct {
 	// causes exponential requests, so be careful when defining a value.
 	MaxRemoteRecursion int
 
+	// RequirePinnedReferences refuses a remote reference that is not
+	// pinned (api.ValidateReference: a digest, or a commit in a VCS
+	// locator) at every level of the compile, so a compiled document is
+	// reproducible. Off by default: a reference by branch or by a bare
+	// URL compiles, as it always has.
+	RequirePinnedReferences bool
+
 	// MaxParallelFetches limits the number of concurrent remote fetches.
 	// Default: 50
 	MaxParallelFetches int
@@ -68,16 +72,46 @@ var defaultCompilerOpts = CompilerOptions{
 type Compiler struct {
 	Options CompilerOptions
 	Store   StorageBackend
+	// Fetcher reads the policy locations: the root location handed to
+	// CompileVerifyLocation and every remote reference. It carries the
+	// default scheme fetchers plus any registered with WithFetcher.
+	Fetcher *Fetcher
 	impl    compilerImplementation
 }
 
-func NewCompiler() *Compiler {
+// CompilerOptFn configures a Compiler at construction.
+type CompilerOptFn func(*Compiler)
+
+// WithFetcher registers scheme fetchers on the compiler's Fetcher, beside
+// the defaults, so locations of their schemes can be compiled and
+// referenced.
+func WithFetcher(fetchers ...SchemeFetcher) CompilerOptFn {
+	return func(c *Compiler) { c.Fetcher.Register(fetchers...) }
+}
+
+// WithCompilerOptions sets the compiler's options.
+func WithCompilerOptions(opts CompilerOptions) CompilerOptFn {
+	return func(c *Compiler) { c.Options = opts }
+}
+
+// WithPinnedReferences makes the compiler refuse remote references that are
+// not pinned by a digest or a commit (CompilerOptions.RequirePinnedReferences).
+func WithPinnedReferences(require bool) CompilerOptFn {
+	return func(c *Compiler) { c.Options.RequirePinnedReferences = require }
+}
+
+func NewCompiler(funcs ...CompilerOptFn) *Compiler {
 	opts := defaultCompilerOpts
-	return &Compiler{
+	c := &Compiler{
 		Options: opts,
 		Store:   newRefStore(),
+		Fetcher: NewFetcher(),
 		impl:    &defaultCompilerImpl{},
 	}
+	for _, f := range funcs {
+		f(c)
+	}
+	return c
 }
 
 func (compiler *Compiler) CompileLocation(location string, funcs ...options.OptFn) (*api.PolicySet, *api.Policy, *api.PolicyGroup, error) {
@@ -92,12 +126,8 @@ func (compiler *Compiler) CompileLocation(location string, funcs ...options.OptF
 //
 // This function variant returns the signature verification.
 func (compiler *Compiler) CompileVerifyLocation(location string, funcs ...options.OptFn) (set *api.PolicySet, pcy *api.Policy, grp *api.PolicyGroup, ver attestation.Verification, err error) {
-	// First, if it looks like a URI, fetch it.
-	//
-	// TODO(puerco): Figure out a way to not hardcode supported schemes
-	if strings.HasPrefix(location, "git+https://") ||
-		strings.HasPrefix(location, "git+ssh://") ||
-		strings.HasPrefix(location, "https://") {
+	// First, if a fetcher handles the location, fetch it.
+	if compiler.fetcher().Supports(location) {
 		return compiler.CompileVerifyRemote(location, funcs...)
 	}
 
@@ -121,19 +151,20 @@ func (compiler *Compiler) CompileRemote(uri string, funcs ...options.OptFn) (*ap
 // CompileRemote reads a policy or policy set from a remote location. The location
 // URI can be a git VCS locator using HTTPS or SSH as transport or an HTTPS URL.
 func (compiler *Compiler) CompileVerifyRemote(uri string, funcs ...options.OptFn) (set *api.PolicySet, pcy *api.Policy, grp *api.PolicyGroup, ver attestation.Verification, err error) {
-	var b bytes.Buffer
-	switch {
-	case strings.HasPrefix(uri, "git+https://") || strings.HasPrefix(uri, "git+ssh://"):
-		err = vcslocator.CopyFile(uri, &b)
-	case strings.HasPrefix(uri, "https://"):
-		err = http.NewAgent().GetToWriter(&b, uri)
-	default:
-		return nil, nil, nil, nil, fmt.Errorf("unsupported policy location")
-	}
+	data, err := compiler.fetcher().Get(context.Background(), uri)
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("reading policy from remote location: %w", err)
 	}
-	return compiler.CompileVerify(b.Bytes(), funcs...)
+	return compiler.CompileVerify(data, funcs...)
+}
+
+// fetcher returns the compiler's fetcher, the default when a Compiler was
+// built as a literal.
+func (compiler *Compiler) fetcher() *Fetcher {
+	if compiler.Fetcher == nil {
+		compiler.Fetcher = NewFetcher()
+	}
+	return compiler.Fetcher
 }
 
 // CompileFile reads data from a local file and returns either a policy set or policy.
@@ -228,7 +259,7 @@ func (compiler *Compiler) CompileSet(set *api.PolicySet, funcs ...options.OptFn)
 	// Fetch remote resources. This retrieves the remote data but also validates
 	// the signatures and/or hashes
 	if err := compiler.impl.FetchRemoteResources(
-		&compiler.Options, compiler.Store, remoteRefs,
+		&compiler.Options, compiler.fetcher(), compiler.Store, remoteRefs,
 	); err != nil {
 		return nil, fmt.Errorf("fetching remote resources: %w", err)
 	}
@@ -267,7 +298,7 @@ func (compiler *Compiler) CompilePolicy(p *api.Policy, funcs ...options.OptFn) (
 	// Fetch remote resources. This retrieves the remote data but also validates
 	// the signatures and/or hashes
 	if err := compiler.impl.FetchRemoteResources(
-		&compiler.Options, compiler.Store, remoteRefs,
+		&compiler.Options, compiler.fetcher(), compiler.Store, remoteRefs,
 	); err != nil {
 		return nil, fmt.Errorf("fetching remote resources: %w", err)
 	}
@@ -302,7 +333,7 @@ func (compiler *Compiler) CompilePolicyGroup(grp *api.PolicyGroup, funcs ...opti
 	}
 
 	if err := compiler.impl.FetchRemoteResources(
-		&compiler.Options, compiler.Store, remoteRefs,
+		&compiler.Options, compiler.fetcher(), compiler.Store, remoteRefs,
 	); err != nil {
 		return nil, fmt.Errorf("fetching remote resources: %w", err)
 	}

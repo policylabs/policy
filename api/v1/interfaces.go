@@ -21,6 +21,8 @@ type RemoteReference interface {
 	GetSourceURL() string
 	GetVersion() int64
 	SetVersion(int64)
+	// Validate reports whether the reference is pinned (ValidateReference).
+	Validate() error
 }
 
 type ChainProvider interface {

@@ -4,6 +4,7 @@
 package policy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -19,7 +20,7 @@ type compilerImplementation interface {
 	ValidatePolicy(*CompilerOptions, *api.Policy) error
 	ExtractRemoteSetReferences(*CompilerOptions, *api.PolicySet) ([]api.RemoteReference, error)
 	ExtractRemotePolicyReferences(*CompilerOptions, *api.Policy) ([]api.RemoteReference, error)
-	FetchRemoteResources(*CompilerOptions, StorageBackend, []api.RemoteReference) error
+	FetchRemoteResources(*CompilerOptions, *Fetcher, StorageBackend, []api.RemoteReference) error
 	ValidateRemotes(*CompilerOptions, StorageBackend) error
 	AssemblePolicySet(*CompilerOptions, *api.PolicySet, StorageBackend) error
 	AssemblePolicy(*CompilerOptions, *api.Policy, StorageBackend) (*api.Policy, error)
@@ -181,8 +182,22 @@ func (dci *defaultCompilerImpl) groupRemoteRefs(refs []api.RemoteReference) ([]a
 // the referenced elements. The fetchCount pointer tracks total fetches across
 // recursive calls to enforce the MaxTotalFetches limit.
 func (dci *defaultCompilerImpl) fetchRemoteResources(
-	opts *CompilerOptions, recurse int, store StorageBackend, refs []api.RemoteReference, fetchCount *int,
+	opts *CompilerOptions, fetcher *Fetcher, recurse int, store StorageBackend, refs []api.RemoteReference, fetchCount *int,
 ) error {
+	// Refuse references that are not pinned when asked to, cached or not,
+	// so a document that compiled is reproducible from its references.
+	if opts.RequirePinnedReferences {
+		errs := []error{}
+		for _, ref := range refs {
+			if err := ref.Validate(); err != nil {
+				errs = append(errs, fmt.Errorf("reference %q is not pinned: %w", ref.GetSourceURL(), err))
+			}
+		}
+		if err := errors.Join(errs...); err != nil {
+			return err
+		}
+	}
+
 	// Extract the URIs
 	uris := []string{}
 	newRefs := []api.RemoteReference{}
@@ -236,16 +251,14 @@ func (dci *defaultCompilerImpl) fetchRemoteResources(
 
 	logrus.Debugf("Fetching remote references (depth %d, total fetches: %d): %+v", recurse, *fetchCount, uris)
 
-	// Create fetcher with batching support
-	fetcher := NewFetcher()
-
 	// Retrieve the remote data using batched fetching to limit parallelism
+	ctx := context.Background()
 	var data [][]byte
 	var err error
 	if opts.MaxParallelFetches > 0 && len(uris) > opts.MaxParallelFetches {
-		data, err = fetcher.GetGroupBatched(uris, opts.MaxParallelFetches)
+		data, err = fetcher.GetGroupBatched(ctx, uris, opts.MaxParallelFetches)
 	} else {
-		data, err = fetcher.GetGroup(uris)
+		data, err = fetcher.GetGroup(ctx, uris)
 	}
 	if err != nil {
 		return fmt.Errorf("fetching remote data: %w", err)
@@ -317,18 +330,21 @@ func (dci *defaultCompilerImpl) fetchRemoteResources(
 	}
 
 	// ... or if not, recurse
-	return dci.fetchRemoteResources(opts, recurse+1, store, rrefs, fetchCount)
+	return dci.fetchRemoteResources(opts, fetcher, recurse+1, store, rrefs, fetchCount)
 }
 
 // FetchRemoteResources pulls all the remote data in parallel and stores it
 // in the configured StorageBackend.
-func (dci *defaultCompilerImpl) FetchRemoteResources(opts *CompilerOptions, store StorageBackend, refs []api.RemoteReference) error {
+func (dci *defaultCompilerImpl) FetchRemoteResources(opts *CompilerOptions, fetcher *Fetcher, store StorageBackend, refs []api.RemoteReference) error {
 	if store == nil {
 		return errors.New("storage backend missing")
 	}
 
+	if fetcher == nil {
+		fetcher = NewFetcher()
+	}
 	fetchCount := 0
-	return dci.fetchRemoteResources(opts, 0, store, refs, &fetchCount)
+	return dci.fetchRemoteResources(opts, fetcher, 0, store, refs, &fetchCount)
 }
 
 func (dci *defaultCompilerImpl) ValidateRemotes(*CompilerOptions, StorageBackend) error {
