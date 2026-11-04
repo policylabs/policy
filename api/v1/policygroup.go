@@ -30,6 +30,11 @@ func (ref *PolicyGroupRef) SetVersion(v int64) {
 	ref.Version = v
 }
 
+// Validate returns an error if the reference is not pinned (ValidateReference).
+func (ref *PolicyGroupRef) Validate() error {
+	return ValidateReference(ref)
+}
+
 // Validate checks the consistency of the policy group
 func (grp *PolicyGroup) Validate() error {
 	errs := []error{}

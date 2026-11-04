@@ -134,3 +134,28 @@ func TestParseIdentitySlug(t *testing.T) {
 		})
 	}
 }
+
+func TestPolicyGroupRefValidate(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		ref     *PolicyGroupRef
+		mustErr bool
+	}{
+		{"no location", &PolicyGroupRef{Id: "g"}, false},
+		{"url without digest", &PolicyGroupRef{Location: &intoto.ResourceDescriptor{Uri: "https://example.com/g.json"}}, true},
+		{"url with digest", &PolicyGroupRef{Location: &intoto.ResourceDescriptor{Uri: "https://example.com/g.json", Digest: map[string]string{"sha256": "ab"}}}, false},
+		{"locator without commit", &PolicyGroupRef{Location: &intoto.ResourceDescriptor{Uri: "git+https://github.com/org/repo#g.json"}}, true},
+		{"locator with commit", &PolicyGroupRef{Location: &intoto.ResourceDescriptor{Uri: "git+https://github.com/org/repo@9a70ca49804c2b993bb6b62d51d5524f3443d6ec#g.json"}}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := tc.ref.Validate()
+			if tc.mustErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}

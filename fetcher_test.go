@@ -5,6 +5,8 @@ package policy
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"testing"
@@ -155,4 +157,43 @@ func TestCompileVerifyLocationThroughRegisteredFetcher(t *testing.T) {
 	_, pcy, _, err = parser.Open("mem://policy", options.WithVerifySignatures(false))
 	require.NoError(t, err)
 	require.Equal(t, "policy-over-mem", pcy.GetId())
+}
+
+// With pinned references required, a reference without a digest or commit
+// is refused at every level; one with a matching digest compiles.
+func TestCompileRequiresPinnedReferences(t *testing.T) {
+	t.Parallel()
+	policyDoc := []byte(`{"id": "leaf", "meta": {"description": "leaf"}, "tenets": [{"id": "t1", "code": "true"}]}`)
+	sum := sha256.Sum256(policyDoc)
+	digest := hex.EncodeToString(sum[:])
+	mem := &memFetcher{scheme: "mem", docs: map[string][]byte{
+		"mem://leaf":     policyDoc,
+		"mem://unpinned": []byte(`{"id": "set-unpinned", "meta": {}, "policies": [{"source": {"location": {"uri": "mem://leaf"}}}]}`),
+		"mem://pinned":   []byte(`{"id": "set-pinned", "meta": {}, "policies": [{"source": {"location": {"uri": "mem://leaf", "digest": {"sha256": "` + digest + `"}}}}]}`),
+		// A pinned set whose fetched member references something unpinned.
+		"mem://nested": []byte(`{"id": "set-nested", "meta": {}, "policies": [{"source": {"location": {"uri": "mem://unpinned-group"}}}]}`),
+	}}
+	nestedDoc := []byte(`{"id": "set-unpinned-nested", "meta": {}, "policies": [{"source": {"location": {"uri": "mem://leaf"}}}]}`)
+	nestedSum := sha256.Sum256(nestedDoc)
+	mem.docs["mem://unpinned-group"] = nestedDoc
+	mem.docs["mem://nested"] = []byte(`{"id": "set-nested", "meta": {}, "policies": [{"source": {"location": {"uri": "mem://unpinned-group", "digest": {"sha256": "` + hex.EncodeToString(nestedSum[:]) + `"}}}}]}`)
+
+	lax := NewCompiler(WithFetcher(mem))
+	_, _, _, err := lax.CompileLocation("mem://unpinned", options.WithVerifySignatures(false))
+	require.NoError(t, err, "unpinned references compile by default")
+
+	strict := NewCompiler(WithFetcher(mem), WithPinnedReferences(true))
+	_, _, _, err = strict.CompileLocation("mem://unpinned", options.WithVerifySignatures(false))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "mem://leaf")
+	require.Contains(t, err.Error(), "not pinned")
+
+	set, _, _, err := strict.CompileLocation("mem://pinned", options.WithVerifySignatures(false))
+	require.NoError(t, err)
+	require.Equal(t, "leaf", set.GetPolicies()[0].GetId())
+
+	// The reference inside a fetched document is held to the same rule.
+	_, _, _, err = strict.CompileLocation("mem://nested", options.WithVerifySignatures(false))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "mem://leaf")
 }

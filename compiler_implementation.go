@@ -184,6 +184,20 @@ func (dci *defaultCompilerImpl) groupRemoteRefs(refs []api.RemoteReference) ([]a
 func (dci *defaultCompilerImpl) fetchRemoteResources(
 	opts *CompilerOptions, fetcher *Fetcher, recurse int, store StorageBackend, refs []api.RemoteReference, fetchCount *int,
 ) error {
+	// Refuse references that are not pinned when asked to, cached or not,
+	// so a document that compiled is reproducible from its references.
+	if opts.RequirePinnedReferences {
+		errs := []error{}
+		for _, ref := range refs {
+			if err := ref.Validate(); err != nil {
+				errs = append(errs, fmt.Errorf("reference %q is not pinned: %w", ref.GetSourceURL(), err))
+			}
+		}
+		if err := errors.Join(errs...); err != nil {
+			return err
+		}
+	}
+
 	// Extract the URIs
 	uris := []string{}
 	newRefs := []api.RemoteReference{}

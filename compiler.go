@@ -45,6 +45,13 @@ type CompilerOptions struct {
 	// causes exponential requests, so be careful when defining a value.
 	MaxRemoteRecursion int
 
+	// RequirePinnedReferences refuses a remote reference that is not
+	// pinned (api.ValidateReference: a digest, or a commit in a VCS
+	// locator) at every level of the compile, so a compiled document is
+	// reproducible. Off by default: a reference by branch or by a bare
+	// URL compiles, as it always has.
+	RequirePinnedReferences bool
+
 	// MaxParallelFetches limits the number of concurrent remote fetches.
 	// Default: 50
 	MaxParallelFetches int
@@ -85,6 +92,12 @@ func WithFetcher(fetchers ...SchemeFetcher) CompilerOptFn {
 // WithCompilerOptions sets the compiler's options.
 func WithCompilerOptions(opts CompilerOptions) CompilerOptFn {
 	return func(c *Compiler) { c.Options = opts }
+}
+
+// WithPinnedReferences makes the compiler refuse remote references that are
+// not pinned by a digest or a commit (CompilerOptions.RequirePinnedReferences).
+func WithPinnedReferences(require bool) CompilerOptFn {
+	return func(c *Compiler) { c.Options.RequirePinnedReferences = require }
 }
 
 func NewCompiler(funcs ...CompilerOptFn) *Compiler {
