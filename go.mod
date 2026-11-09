@@ -12,7 +12,7 @@ require (
 	github.com/in-toto/attestation v1.2.0
 	github.com/nozzle/throttler v0.0.0-20180817012639-2ea982251481
 	github.com/policylabs/collector v0.4.0
-	github.com/policylabs/signer v0.6.6
+	github.com/policylabs/signer v0.6.7
 	github.com/sirupsen/logrus v1.10.2
 	github.com/stretchr/testify v1.12.1
 	google.golang.org/protobuf v1.36.12
