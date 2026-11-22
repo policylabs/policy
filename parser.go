@@ -254,22 +254,39 @@ func (p *Parser) ParseVerifyPolicyOrSetOrGroup(data []byte, funcs ...options.Opt
 	var wg sync.WaitGroup
 	wg.Add(3)
 
+	// The data is parsed as each of the three kinds at once. Each parse
+	// answers its own verification of the envelope the data came in, into a
+	// variable of its own: they used to share the one returned, and which
+	// of the three it held was whichever parse finished last.
 	var errSet, errPolicy, errGroup error
+	var vSet, vPolicy, vGroup attestation.Verification
 	go func() {
 		defer wg.Done()
-		set, v, errSet = p.impl.ParsePolicySet(&opts, data)
+		set, vSet, errSet = p.impl.ParsePolicySet(&opts, data)
 	}()
 	go func() {
 		defer wg.Done()
-		pcy, v, errPolicy = p.impl.ParsePolicy(&opts, data)
+		pcy, vPolicy, errPolicy = p.impl.ParsePolicy(&opts, data)
 	}()
 	go func() {
 		defer wg.Done()
-		grp, v, errGroup = p.impl.ParsePolicyGroup(&opts, data)
+		grp, vGroup, errGroup = p.impl.ParsePolicyGroup(&opts, data)
 	}()
 
-	// Wait for both parsers
+	// Wait for the three parsers
 	wg.Wait()
+
+	// The verification returned is that of the kind the data parsed as, in
+	// the order PolicyOrSetOrGroup picks the kind in. It is never that of a
+	// parse that failed.
+	switch {
+	case set != nil:
+		v = vSet
+	case pcy != nil:
+		v = vPolicy
+	case grp != nil:
+		v = vGroup
+	}
 
 	if (set == nil && pcy == nil && grp == nil) || (errSet != nil && errPolicy != nil && errGroup != nil) {
 		// A we are unmarshaling both types, one of the errors will always be

@@ -4,9 +4,14 @@
 package policy
 
 import (
+	"errors"
 	"testing"
 
+	"github.com/policylabs/attestation"
 	"github.com/stretchr/testify/require"
+
+	api "github.com/policylabs/policy/api/v1"
+	"github.com/policylabs/policy/options"
 )
 
 func TestParseLocalGroups(t *testing.T) {
@@ -88,4 +93,88 @@ func TestParseRejectsMultilineNames(t *testing.T) {
 	require.Equal(t, "OSPS baseline", grp.GetMeta().GetName())
 	_, err = parser.ParsePolicyGroup([]byte(`{"id": "g", "meta": {"name": "two\nlines"}, "blocks": []}`))
 	require.Error(t, err)
+}
+
+// kindVerification is a verification that says which parse it came from.
+type kindVerification string
+
+func (kindVerification) GetVerified() bool        { return true }
+func (kindVerification) MatchesIdentity(any) bool { return false }
+
+// kindParser parses data as the kinds it is told to, answering for each a
+// verification of its own, also when the parse fails: the default
+// implementation reads the envelope before it knows the kind.
+type kindParser struct {
+	set, policy, group bool
+}
+
+func (k *kindParser) ParsePolicySet(*options.ParseOptions, []byte) (*api.PolicySet, attestation.Verification, error) {
+	if k.set {
+		return &api.PolicySet{Id: "set"}, kindVerification("set"), nil
+	}
+	return nil, kindVerification("failed set"), errors.New(`unknown field "tenets"`)
+}
+
+func (k *kindParser) ParsePolicy(*options.ParseOptions, []byte) (*api.Policy, attestation.Verification, error) {
+	if k.policy {
+		return &api.Policy{Id: "policy"}, kindVerification("policy"), nil
+	}
+	return nil, kindVerification("failed policy"), errors.New(`unknown field "policies"`)
+}
+
+func (k *kindParser) ParsePolicyGroup(*options.ParseOptions, []byte) (*api.PolicyGroup, attestation.Verification, error) {
+	if k.group {
+		return &api.PolicyGroup{Id: "group"}, kindVerification("group"), nil
+	}
+	return nil, kindVerification("failed group"), errors.New(`unknown field "policies"`)
+}
+
+// The data is parsed as a policy, a set and a group at once, and each parse
+// verifies the envelope for itself. The verification returned is the one of
+// the kind the data is, every time: the three parses used to write it to the
+// same variable, and the last to finish won. Run with -race, this is also
+// where that showed.
+func TestParseVerifyPolicyOrSetOrGroupVerification(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name   string
+		parses kindParser
+		want   attestation.Verification
+	}{
+		{name: "a set", parses: kindParser{set: true}, want: kindVerification("set")},
+		{name: "a policy", parses: kindParser{policy: true}, want: kindVerification("policy")},
+		{name: "a group", parses: kindParser{group: true}, want: kindVerification("group")},
+		// Data that reads as more than one kind is taken as the kind
+		// PolicyOrSetOrGroup picks, and verified as that one.
+		{name: "a set first", parses: kindParser{set: true, policy: true, group: true}, want: kindVerification("set")},
+		{name: "a policy before a group", parses: kindParser{policy: true, group: true}, want: kindVerification("policy")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p := &Parser{impl: &tc.parses}
+			for range 200 {
+				set, pcy, grp, v, err := p.ParseVerifyPolicyOrSetOrGroup([]byte(`{}`))
+				require.NoError(t, err)
+				require.Equal(t, tc.want, v)
+				require.Equal(t, tc.parses.set, set != nil)
+				require.Equal(t, tc.parses.policy, pcy != nil)
+				require.Equal(t, tc.parses.group, grp != nil)
+			}
+		})
+	}
+
+	// Nothing parsed: there is an error and no verification, not that of a
+	// parse that failed.
+	t.Run("none", func(t *testing.T) {
+		t.Parallel()
+		p := &Parser{impl: &kindParser{}}
+		for range 200 {
+			set, pcy, grp, v, err := p.ParseVerifyPolicyOrSetOrGroup([]byte(`{}`))
+			require.Error(t, err)
+			require.Nil(t, v)
+			require.Nil(t, set)
+			require.Nil(t, pcy)
+			require.Nil(t, grp)
+		}
+	})
 }
