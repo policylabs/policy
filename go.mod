@@ -6,7 +6,7 @@ require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260825204119-511051f7f437.2
 	buf.build/go/protovalidate v1.4.1
 	github.com/carabiner-dev/hasher v0.2.4
-	github.com/carabiner-dev/vcslocator v0.5.1
+	github.com/carabiner-dev/vcslocator v0.5.2
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/hjson/hjson-go/v4 v4.7.1
 	github.com/in-toto/attestation v1.2.0
