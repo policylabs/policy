@@ -9,10 +9,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"sync"
 
 	"github.com/carabiner-dev/vcslocator"
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/storage/memory"
 	"sigs.k8s.io/release-utils/http"
 
 	"github.com/policylabs/policy/options"
@@ -37,6 +42,29 @@ type SchemeFetcher interface {
 	// fetcher with nothing to share across locations may call Get in a loop.
 	GetGroup(ctx context.Context, locations []string) ([][]byte, error)
 }
+
+// SelfResolver is implemented by a SchemeFetcher whose locations name a
+// file in a repository at a revision, which is what a self reference (a
+// "$/" reference, see api.SelfReferencePrefix) is resolved against: the
+// repository and the revision of the document it is written in. A fetcher
+// of plain URLs has neither and does not implement it.
+type SelfResolver interface {
+	// PinLocation returns the location with its revision fixed: one that
+	// names a branch, a tag or no revision at all comes back naming the
+	// commit it points to now, one that is pinned comes back as it is.
+	PinLocation(ctx context.Context, location string) (string, error)
+	// ResolveSelf returns the location of the file at path, counted from
+	// the root of the repository, in the repository and at the revision
+	// of base. It refuses a base that is not pinned.
+	ResolveSelf(base, path string) (string, error)
+}
+
+// ErrSelfReferenceUnsupported is returned when a self reference is written
+// in a document read from a location that is not in a repository, such as
+// an HTTP URL: there is no revision the reference could be read at.
+var ErrSelfReferenceUnsupported = errors.New(
+	"self references are not supported in documents read from this kind of location",
+)
 
 // Fetcher is the ampel policy fetcher: it dispatches each location to the
 // first registered SchemeFetcher that supports it, fetches a group's
@@ -74,6 +102,27 @@ func (gf *Fetcher) Register(fetchers ...SchemeFetcher) {
 // Supports reports whether any registered fetcher handles the location.
 func (gf *Fetcher) Supports(location string) bool {
 	return gf.fetcherFor(location) != nil
+}
+
+// PinLocation fixes the revision of a location when the fetcher handling
+// it knows of revisions (see SelfResolver). Any other location is returned
+// as it is.
+func (gf *Fetcher) PinLocation(ctx context.Context, location string) (string, error) {
+	if sr, ok := gf.fetcherFor(location).(SelfResolver); ok {
+		return sr.PinLocation(ctx, location)
+	}
+	return location, nil
+}
+
+// ResolveSelf returns the location a self reference to path points to when
+// written in the document read from base. It returns
+// ErrSelfReferenceUnsupported when base is not a location in a repository.
+func (gf *Fetcher) ResolveSelf(base, path string) (string, error) {
+	sr, ok := gf.fetcherFor(base).(SelfResolver)
+	if !ok {
+		return "", fmt.Errorf("%w: %q", ErrSelfReferenceUnsupported, base)
+	}
+	return sr.ResolveSelf(base, path)
 }
 
 func (gf *Fetcher) fetcherFor(location string) SchemeFetcher {
@@ -297,4 +346,105 @@ func (vf *VCSFetcher) Get(_ context.Context, locator string) ([]byte, error) {
 // GetGroup fetches the locators, cloning each repository once.
 func (vf *VCSFetcher) GetGroup(_ context.Context, locators []string) ([][]byte, error) {
 	return vcslocator.GetGroup(locators)
+}
+
+var _ SelfResolver = (*VCSFetcher)(nil)
+
+// PinLocation implements SelfResolver. A locator that names no commit is
+// resolved by asking the remote what its branch or tag, or its default
+// branch when it names neither, points to.
+func (vf *VCSFetcher) PinLocation(ctx context.Context, locator string) (string, error) {
+	comps, err := vcslocator.Locator(locator).Parse()
+	if err != nil {
+		return "", fmt.Errorf("parsing VCS locator: %w", err)
+	}
+	if comps.Commit != "" {
+		return locator, nil
+	}
+
+	commit, err := resolveRemoteCommit(ctx, locator, comps)
+	if err != nil {
+		return "", fmt.Errorf("resolving the commit of %q: %w", locator, err)
+	}
+	return vcsLocatorAt(comps, commit, comps.SubPath), nil
+}
+
+// ResolveSelf implements SelfResolver.
+func (vf *VCSFetcher) ResolveSelf(base, path string) (string, error) {
+	comps, err := vcslocator.Locator(base).Parse()
+	if err != nil {
+		return "", fmt.Errorf("parsing VCS locator: %w", err)
+	}
+	if !fullCommitRegex.MatchString(comps.Commit) {
+		return "", fmt.Errorf("unable to resolve a self reference against %q: it does not name a full commit", base)
+	}
+	return vcsLocatorAt(comps, comps.Commit, path), nil
+}
+
+// fullCommitRegex matches the full name of a commit, SHA-1 or SHA-256.
+var fullCommitRegex = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
+
+// vcsLocatorAt builds the locator of a path of a repository at a commit.
+func vcsLocatorAt(c *vcslocator.Components, commit, subPath string) string {
+	repo := strings.TrimPrefix(c.RepoPath, "/")
+	var b strings.Builder
+	fmt.Fprintf(&b, "git+%s://%s/%s@%s", c.Transport, c.Hostname, repo, commit)
+	if subPath != "" {
+		fmt.Fprintf(&b, "#%s", subPath)
+	}
+	return b.String()
+}
+
+// resolveRemoteCommit asks the remote of a locator for the commit its
+// revision points to. A revision written as a bare name is looked up as a
+// tag and then as a branch; no revision means the default branch.
+func resolveRemoteCommit(ctx context.Context, locator string, c *vcslocator.Components) (string, error) {
+	auth, err := vcslocator.GetAuthMethod(locator)
+	if err != nil {
+		return "", fmt.Errorf("getting credentials: %w", err)
+	}
+
+	rem := git.NewRemote(memory.NewStorage(), &config.RemoteConfig{
+		Name: "origin",
+		URLs: []string{c.RepoURL()},
+	})
+	// Annotated tags are listed twice: under their name, pointing to the
+	// tag object, and peeled ("name^{}"), pointing to the commit.
+	refs, err := rem.ListContext(ctx, &git.ListOptions{Auth: auth, PeelingOption: git.AppendPeeled})
+	if err != nil {
+		return "", fmt.Errorf("listing remote references: %w", err)
+	}
+	hashes := map[string]string{}
+	var head string
+	for _, r := range refs {
+		if r.Type() == plumbing.SymbolicReference {
+			if r.Name() == plumbing.HEAD {
+				head = r.Target().String()
+			}
+			continue
+		}
+		hashes[r.Name().String()] = r.Hash().String()
+	}
+
+	var names []string
+	switch {
+	case c.RefString == "":
+		names = []string{head, plumbing.HEAD.String()}
+	case strings.HasPrefix(c.RefString, "refs/"):
+		names = []string{c.RefString}
+	default:
+		names = []string{"refs/tags/" + c.RefString, "refs/heads/" + c.RefString}
+	}
+	for _, name := range names {
+		if h, ok := hashes[name+"^{}"]; ok {
+			return h, nil
+		}
+		if h, ok := hashes[name]; ok {
+			return h, nil
+		}
+	}
+	if c.RefString == "" {
+		return "", errors.New("the remote has no default branch")
+	}
+	return "", fmt.Errorf("%w: %q", vcslocator.ErrRefNotFound, c.RefString)
 }

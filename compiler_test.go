@@ -344,3 +344,40 @@ func TestCompileNames(t *testing.T) {
 		require.Equal(t, "Local name", set.GetGroups()[1].GetMeta().GetName())
 	})
 }
+
+// TestCompileSelfReferenceUnresolved checks that a self reference fails the
+// compile, with an error naming the cause, when the compiler does not know
+// where the document was read from, and that a malformed one is refused
+// before anything is fetched.
+func TestCompileSelfReferenceUnresolved(t *testing.T) {
+	t.Parallel()
+	const self = "$/policies/policy.json"
+	policyStanza := func(uri string) string {
+		return `{"id": "p", "source": {"location": {"uri": "` + uri + `"}}}`
+	}
+	for _, tc := range []struct {
+		name string
+		data string
+	}{
+		{"policy", policyStanza(self)},
+		{"set-policy", `{"id": "s", "policies": [` + policyStanza(self) + `]}`},
+		{"set-group", `{"id": "s", "groups": [{"id": "g", "source": {"location": {"uri": "` + self + `"}}}]}`},
+		{"set-group-policy", `{"id": "s", "groups": [{"id": "g", "blocks": [{"policies": [` + policyStanza(self) + `]}]}]}`},
+		{"group", `{"id": "g", "blocks": [{"policies": [` + policyStanza(self) + `]}]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, _, _, err := NewCompiler().Compile([]byte(tc.data))
+			require.ErrorIs(t, err, ErrSelfReferenceUnresolved)
+			require.ErrorContains(t, err, self)
+		})
+	}
+
+	t.Run("malformed", func(t *testing.T) {
+		t.Parallel()
+		_, _, _, err := NewCompiler().Compile([]byte(policyStanza("$/../policy.json")))
+		require.Error(t, err)
+		require.NotErrorIs(t, err, ErrSelfReferenceUnresolved)
+		require.ErrorContains(t, err, `".."`)
+	})
+}

@@ -459,6 +459,11 @@ func (u *Updater) extractAllRefs(files []string) []*extractedRef {
 			if ref == nil || ref.GetLocation() == nil {
 				return
 			}
+			// A self reference follows the document it is in, there is
+			// no revision in it to move forward.
+			if api.IsSelfReference(ref.GetLocation().GetUri()) {
+				return
+			}
 			uri := ref.GetSourceURL()
 			if uri == "" {
 				return
@@ -640,11 +645,5 @@ func remoteRefName(c *vcslocator.Components) string {
 // buildLocatorAt rewrites a locator to point at a specific commit while
 // preserving the subpath.
 func buildLocatorAt(c *vcslocator.Components, commit string) string {
-	repo := strings.TrimPrefix(c.RepoPath, "/")
-	var b strings.Builder
-	fmt.Fprintf(&b, "git+%s://%s/%s@%s", c.Transport, c.Hostname, repo, commit)
-	if c.SubPath != "" {
-		fmt.Fprintf(&b, "#%s", c.SubPath)
-	}
-	return b.String()
+	return vcsLocatorAt(c, commit, c.SubPath)
 }

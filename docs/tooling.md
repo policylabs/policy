@@ -336,6 +336,18 @@ set, pcy, group, err := compiler.CompileLocation("https://example.com/policy.jso
 set, pcy, group, err := compiler.Compile(jsonData)
 ```
 
+A document compiled from a file or from a remote location can use [self references](policy-materials.md#self-references) (`$/path`), which are read from the repository the document is in. Data has no location, so say where it was read from, or which directory its self references are read from:
+
+```go
+// The document was read from a repository, or from a local file
+set, pcy, group, err := compiler.Compile(jsonData, options.WithLocation("git+https://github.com/org/repo@sha#sets/set.json"))
+
+// Read the self references from a directory
+set, pcy, group, err := compiler.Compile(jsonData, options.WithSelfRoot("/path/to/repository"))
+```
+
+`options.WithSelfRoot` also replaces the root of the repository of a document compiled from a file, for one that is not in a git repository. Without a location or a root, compiling a document with self references fails with `ErrSelfReferenceUnresolved`. It fails with `ErrSelfReferenceUnsupported` when the location is not in a repository, such as an HTTPS URL.
+
 #### Compiling Specific Types
 
 If you know the type, you can compile directly:
