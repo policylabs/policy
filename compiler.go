@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/policylabs/attestation"
 
@@ -151,11 +152,39 @@ func (compiler *Compiler) CompileRemote(uri string, funcs ...options.OptFn) (*ap
 // CompileRemote reads a policy or policy set from a remote location. The location
 // URI can be a git VCS locator using HTTPS or SSH as transport or an HTTPS URL.
 func (compiler *Compiler) CompileVerifyRemote(uri string, funcs ...options.OptFn) (set *api.PolicySet, pcy *api.Policy, grp *api.PolicyGroup, ver attestation.Verification, err error) {
-	data, err := compiler.fetcher().Get(context.Background(), uri)
+	// Fix the revision of the location before reading it, so that the
+	// document and the self references in it come from the same one.
+	ctx := context.Background()
+	uri, err = compiler.fetcher().PinLocation(ctx, uri)
+	if err != nil {
+		return nil, nil, nil, nil, fmt.Errorf("pinning policy location: %w", err)
+	}
+
+	data, err := compiler.fetcher().Get(ctx, uri)
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("reading policy from remote location: %w", err)
 	}
-	return compiler.CompileVerify(data, funcs...)
+	return compiler.CompileVerify(data, append(slices.Clone(funcs), options.WithLocation(uri))...)
+}
+
+// resolveSelfReferences resolves the self references of a document about to
+// be compiled, the one that is not nil, against the location the options
+// say it was read from.
+func (compiler *Compiler) resolveSelfReferences(
+	set *api.PolicySet, pcy *api.Policy, grp *api.PolicyGroup, funcs []options.OptFn,
+) error {
+	opts := options.DefaultCompileOptions
+	for _, f := range funcs {
+		if err := f(&opts); err != nil {
+			return err
+		}
+	}
+	if err := resolveSelfReferences(
+		context.Background(), compiler.fetcher(), opts.Location, referenceLocations(set, pcy, grp),
+	); err != nil {
+		return fmt.Errorf("resolving self references: %w", err)
+	}
+	return nil
 }
 
 // fetcher returns the compiler's fetcher, the default when a Compiler was
@@ -248,6 +277,10 @@ func (compiler *Compiler) CompileSet(set *api.PolicySet, funcs ...options.OptFn)
 		return nil, fmt.Errorf("validating policy set: %w", err)
 	}
 
+	if err := compiler.resolveSelfReferences(set, nil, nil, funcs); err != nil {
+		return nil, err
+	}
+
 	// Extract and enrich the remote references. This step is expected to return
 	// only those refs that point to remote resources and to compound the integrity
 	// data (hashes) of the remote resources.
@@ -285,6 +318,10 @@ func (compiler *Compiler) CompilePolicy(p *api.Policy, funcs ...options.OptFn) (
 	// Validate PolicySet / Policies
 	if err := compiler.impl.ValidatePolicy(&compiler.Options, p); err != nil {
 		return nil, fmt.Errorf("validating policy: %w", err)
+	}
+
+	if err := compiler.resolveSelfReferences(nil, p, nil, funcs); err != nil {
+		return nil, err
 	}
 
 	// Extract and enrich the remote references. This step is expected to return
@@ -325,6 +362,10 @@ func (compiler *Compiler) CompilePolicyGroup(grp *api.PolicyGroup, funcs ...opti
 	// Validate PolicyGroup
 	if err := compiler.impl.ValidatePolicyGroup(&compiler.Options, grp); err != nil {
 		return nil, fmt.Errorf("validating PolicyGroup: %w", err)
+	}
+
+	if err := compiler.resolveSelfReferences(nil, nil, grp, funcs); err != nil {
+		return nil, err
 	}
 
 	remoteRefs, err := compiler.impl.ExtractRemotePolicyGroupReferences(&compiler.Options, grp)

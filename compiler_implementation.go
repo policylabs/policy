@@ -297,6 +297,11 @@ func (dci *defaultCompilerImpl) fetchRemoteResources(
 		if err != nil {
 			return fmt.Errorf("storing external ref #%d: %w", i, err)
 		}
+		// The self references of the fetched document resolve against the
+		// location it came from, not against the document referencing it.
+		if err := resolveSelfReferences(ctx, fetcher, uris[i], referenceLocations(set, pcy, grp)); err != nil {
+			return fmt.Errorf("resolving self references of %q: %w", uris[i], err)
+		}
 		if set != nil {
 			remoteSets = append(remoteSets, set)
 		}
