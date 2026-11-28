@@ -640,11 +640,5 @@ func remoteRefName(c *vcslocator.Components) string {
 // buildLocatorAt rewrites a locator to point at a specific commit while
 // preserving the subpath.
 func buildLocatorAt(c *vcslocator.Components, commit string) string {
-	repo := strings.TrimPrefix(c.RepoPath, "/")
-	var b strings.Builder
-	fmt.Fprintf(&b, "git+%s://%s/%s@%s", c.Transport, c.Hostname, repo, commit)
-	if c.SubPath != "" {
-		fmt.Fprintf(&b, "#%s", c.SubPath)
-	}
-	return b.String()
+	return vcsLocatorAt(c, commit, c.SubPath)
 }
