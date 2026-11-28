@@ -33,6 +33,14 @@ type compilerImplementation interface {
 	ValidateAssembledPolicyGroup(*CompilerOptions, *api.PolicyGroup) error
 }
 
+// ErrSelfReferenceUnresolved is returned when a document references a file
+// of its own repository (a "$/" self reference, see api.SelfReferencePrefix)
+// and the compiler does not know where the document was read from, so it
+// has no repository to look the file up in.
+var ErrSelfReferenceUnresolved = errors.New(
+	"unable to resolve self reference: the location of the document it is in is not known",
+)
+
 var _ compilerImplementation = &defaultCompilerImpl{}
 
 type defaultCompilerImpl struct{}
@@ -184,6 +192,14 @@ func (dci *defaultCompilerImpl) groupRemoteRefs(refs []api.RemoteReference) ([]a
 func (dci *defaultCompilerImpl) fetchRemoteResources(
 	opts *CompilerOptions, fetcher *Fetcher, recurse int, store StorageBackend, refs []api.RemoteReference, fetchCount *int,
 ) error {
+	// A self reference that got here was not resolved: nothing knows where
+	// the document it is in was read from.
+	for _, ref := range refs {
+		if api.IsSelfReference(ref.GetSourceURL()) {
+			return fmt.Errorf("%w: %q", ErrSelfReferenceUnresolved, ref.GetSourceURL())
+		}
+	}
+
 	// Refuse references that are not pinned when asked to, cached or not,
 	// so a document that compiled is reproducible from its references.
 	if opts.RequirePinnedReferences {

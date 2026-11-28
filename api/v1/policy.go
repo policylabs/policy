@@ -85,10 +85,19 @@ func ValidateReference(ref RemoteReference) error {
 			uri = ref.GetLocation().GetDownloadLocation()
 		}
 
+		// A self reference has to be well formed, pinned or not.
+		if err := validateSelfReference(ref); err != nil {
+			errs = append(errs, err)
+		}
+
 		// Ensure a remote reference hash a hash or digest
 		if len(ref.GetLocation().GetDigest()) == 0 {
-			// VCS locators can have a commit or a hash
-			if strings.HasPrefix(uri, "git+") {
+			switch {
+			case IsSelfReference(uri):
+				// Nothing to require: a self reference is read at the
+				// revision of the document it is in.
+			case strings.HasPrefix(uri, "git+"):
+				// VCS locators can have a commit or a hash
 				l := vcslocator.Locator(uri)
 				parts, err := l.Parse()
 				if err != nil {
@@ -96,7 +105,7 @@ func ValidateReference(ref RemoteReference) error {
 				} else if parts.Commit == "" {
 					errs = append(errs, errors.New("remoter policies referenced by VCS locator require a digest or commit hash"))
 				}
-			} else if uri != "" {
+			case uri != "":
 				errs = append(errs, errors.New("remote policies referenced by URL require at least one hash"))
 			}
 		} else {
@@ -132,6 +141,12 @@ func (p *Policy) Validate() error {
 
 	if err := p.GetWhen().Validate(); err != nil {
 		errs = append(errs, fmt.Errorf("policy %q: %w", p.GetId(), err))
+	}
+
+	if src := p.GetSource(); src != nil {
+		if err := validateSelfReference(src); err != nil {
+			errs = append(errs, fmt.Errorf("policy %q: %w", p.GetId(), err))
+		}
 	}
 
 	return errors.Join(errs...)

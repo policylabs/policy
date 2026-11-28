@@ -43,6 +43,11 @@ func (grp *PolicyGroup) Validate() error {
 			errs = append(errs, fmt.Errorf("invalid common context definition for %q: %w", key, err))
 		}
 	}
+	if src := grp.GetSource(); src != nil {
+		if err := validateSelfReference(src); err != nil {
+			errs = append(errs, fmt.Errorf("group %q: %w", grp.GetId(), err))
+		}
+	}
 	for _, b := range grp.GetBlocks() {
 		if err := b.GetWhen().Validate(); err != nil {
 			errs = append(errs, fmt.Errorf("block %q: %w", b.GetId(), err))

@@ -31,6 +31,11 @@ func (set *PolicySet) Validate() error {
 			errs = append(errs, fmt.Errorf("invalid common context definition for %q: %w", key, err))
 		}
 	}
+	for _, r := range set.GetCommon().GetReferences() {
+		if err := validateSelfReference(r); err != nil {
+			errs = append(errs, fmt.Errorf("reference %q: %w", r.GetId(), err))
+		}
+	}
 	for _, p := range set.GetPolicies() {
 		if err := p.Validate(); err != nil {
 			errs = append(errs, err)
