@@ -23,6 +23,7 @@ This document provides an in-depth reference for the three policy material eleme
 - [Remote Referencing](#remote-referencing)
   - [Reference Syntax](#reference-syntax)
   - [Supported Locations](#supported-locations)
+  - [Self References](#self-references)
   - [Integrity Verification](#integrity-verification)
 - [Complete Examples](#complete-examples)
 
@@ -857,6 +858,43 @@ https://cdn.example.com/policies/v1/build-provenance.json
 ```
 
 Any HTTPS URL that returns policy JSON.
+
+### Self References
+
+A reference whose `uri` starts with `$/` points to a file in the same repository, at the same revision, as the document it is written in. What follows `$/` is the path of the file from the root of the repository:
+
+```json
+{
+  "source": {
+    "location": {
+      "uri": "$/slsa/slsa-builder-id.json"
+    }
+  }
+}
+```
+
+A self reference names no repository and no revision. It takes both from its document, so a PolicySet and the policies it is made of always come from one revision and can be changed in a single commit. The notation follows the [self repository syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax) of GitHub Actions.
+
+Where a self reference is read from depends on where its document was read from:
+
+| The document was read from | `$/path` is read from |
+|----------------------------|------------------------|
+| A VCS locator, such as `git+https://github.com/org/repo@sha#sets/set.json` | The same repository at the same commit: `git+https://github.com/org/repo@sha#path` |
+| A local file | The file at `path` in the working tree of the git repository the file is in, committed or not, with no network access |
+| An HTTPS URL | Nowhere: the compile fails, a URL has no revision to read the reference at |
+
+Rules:
+
+- The path is counted from the root of the repository, never from the directory of the document. It cannot leave the repository: `..`, `.` and empty elements are refused, and so is a symbolic link pointing outside of it.
+- A self reference takes no revision. `$/policy.json@v1` is an error.
+- It is written in `uri`. The compiler fills `downloadLocation` in with what the reference resolved to and ignores a value written there.
+- A self reference resolves against the document it is written in, not against the document that referenced that one. A group fetched from another repository reads its self references from that repository.
+- A locator that names a branch, a tag or no revision is resolved to a commit before the document is read, and its self references are read at that commit.
+- A self reference counts as pinned without a `digest`: it is as pinned as its document. A `digest` can still be added and is verified.
+
+When a document is compiled from a local file, the policies inlined from self references record `$/path` and their digest as their origin, with no commit, so compiling the same tree always produces the same output.
+
+A document handed to the compiler as data has no location. Tell the compiler where it came from, see [Compiling from Various Sources](tooling.md#compiling-from-various-sources).
 
 ### Integrity Verification
 

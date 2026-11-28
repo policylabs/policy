@@ -332,6 +332,38 @@ func TestExtractAllRefs(t *testing.T) {
 	require.Equal(t, "4c4ecf69b9c550fb2d57308f210a5de34802e8fb", bRef.components.Commit)
 }
 
+// TestExtractAllRefsSkipsSelfReferences checks that self references are
+// never offered for update, in any of the places a reference is written,
+// even when the document wrote a download location on one.
+func TestExtractAllRefsSkipsSelfReferences(t *testing.T) {
+	t.Parallel()
+	const pinned = "git+https://github.com/org/repo@9a70ca49804c2b993bb6b62d51d5524f3443d6ec#p.json"
+	self := func(path string) string {
+		return `{"source": {"location": {"uri": "$/` + path + `", "downloadLocation": "` + pinned + `"}}}`
+	}
+	root := t.TempDir()
+	files := map[string]string{
+		"policy.json": `{"id": "p", "source": {"location": {"uri": "$/policies/leaf.json"}}}`,
+		"group.json": `{"id": "g", "source": {"location": {"uri": "$/groups/base.json"}},
+			"blocks": [{"policies": [` + self("policies/leaf.json") + `]}]}`,
+		"set.json": `{"id": "s",
+			"common": {"references": [{"id": "r", "location": {"uri": "$/policies/leaf.json"}}]},
+			"policies": [` + self("policies/leaf.json") + `, {"source": {"location": {"uri": "` + pinned + `"}}}],
+			"groups": [{"source": {"location": {"uri": "$/groups/base.json"}}}]}`,
+	}
+	paths := make([]string, 0, len(files))
+	for name, content := range files {
+		path := filepath.Join(root, name)
+		require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+		paths = append(paths, path)
+	}
+
+	refs := NewUpdater().extractAllRefs(paths)
+	require.Len(t, refs, 1, "only the reference to another repository is left")
+	require.Equal(t, filepath.Join(root, "set.json"), refs[0].file)
+	require.Equal(t, pinned, refs[0].original.GetSourceURL())
+}
+
 func TestCollectSourcesNoPolicies(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

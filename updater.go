@@ -459,6 +459,11 @@ func (u *Updater) extractAllRefs(files []string) []*extractedRef {
 			if ref == nil || ref.GetLocation() == nil {
 				return
 			}
+			// A self reference follows the document it is in, there is
+			// no revision in it to move forward.
+			if api.IsSelfReference(ref.GetLocation().GetUri()) {
+				return
+			}
 			uri := ref.GetSourceURL()
 			if uri == "" {
 				return
