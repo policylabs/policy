@@ -61,6 +61,10 @@ type CompilerOptions struct {
 	// This prevents exponential expansion attacks.
 	// Default: 100
 	MaxTotalFetches int
+
+	// selfRoot is the directory the self references of the local document
+	// being compiled are read from. It is set for the length of a compile.
+	selfRoot string
 }
 
 var defaultCompilerOpts = CompilerOptions{
@@ -168,23 +172,26 @@ func (compiler *Compiler) CompileVerifyRemote(uri string, funcs ...options.OptFn
 }
 
 // resolveSelfReferences resolves the self references of a document about to
-// be compiled, the one that is not nil, against the location the options
-// say it was read from.
+// be compiled, the one that is not nil, against where the options say it
+// was read from. It returns the options to compile the document with.
 func (compiler *Compiler) resolveSelfReferences(
 	set *api.PolicySet, pcy *api.Policy, grp *api.PolicyGroup, funcs []options.OptFn,
-) error {
+) (*CompilerOptions, error) {
 	opts := options.DefaultCompileOptions
 	for _, f := range funcs {
 		if err := f(&opts); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	if err := resolveSelfReferences(
-		context.Background(), compiler.fetcher(), opts.Location, referenceLocations(set, pcy, grp),
-	); err != nil {
-		return fmt.Errorf("resolving self references: %w", err)
+	root, err := resolveSelfReferences(
+		context.Background(), compiler.fetcher(), opts.Location, opts.SelfRoot, referenceLocations(set, pcy, grp),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("resolving self references: %w", err)
 	}
-	return nil
+	copts := compiler.Options
+	copts.selfRoot = root
+	return &copts, nil
 }
 
 // fetcher returns the compiler's fetcher, the default when a Compiler was
@@ -210,6 +217,9 @@ func (compiler *Compiler) CompileVerifyFile(path string, funcs ...options.OptFn)
 	}
 
 	// Record the original file
+	// The self references of the document are read from the repository
+	// the file is in, unless the caller says otherwise.
+	funcs = append([]options.OptFn{options.WithLocation(path)}, funcs...)
 	set, pcy, grp, vfy, err := compiler.CompileVerify(data, funcs...)
 	if set != nil {
 		set.GetMeta().GetOrigin().Name = filepath.Base(path)
@@ -277,7 +287,8 @@ func (compiler *Compiler) CompileSet(set *api.PolicySet, funcs ...options.OptFn)
 		return nil, fmt.Errorf("validating policy set: %w", err)
 	}
 
-	if err := compiler.resolveSelfReferences(set, nil, nil, funcs); err != nil {
+	copts, err := compiler.resolveSelfReferences(set, nil, nil, funcs)
+	if err != nil {
 		return nil, err
 	}
 
@@ -292,7 +303,7 @@ func (compiler *Compiler) CompileSet(set *api.PolicySet, funcs ...options.OptFn)
 	// Fetch remote resources. This retrieves the remote data but also validates
 	// the signatures and/or hashes
 	if err := compiler.impl.FetchRemoteResources(
-		&compiler.Options, compiler.fetcher(), compiler.Store, remoteRefs,
+		copts, compiler.fetcher(), compiler.Store, remoteRefs,
 	); err != nil {
 		return nil, fmt.Errorf("fetching remote resources: %w", err)
 	}
@@ -320,7 +331,8 @@ func (compiler *Compiler) CompilePolicy(p *api.Policy, funcs ...options.OptFn) (
 		return nil, fmt.Errorf("validating policy: %w", err)
 	}
 
-	if err := compiler.resolveSelfReferences(nil, p, nil, funcs); err != nil {
+	copts, err := compiler.resolveSelfReferences(nil, p, nil, funcs)
+	if err != nil {
 		return nil, err
 	}
 
@@ -335,7 +347,7 @@ func (compiler *Compiler) CompilePolicy(p *api.Policy, funcs ...options.OptFn) (
 	// Fetch remote resources. This retrieves the remote data but also validates
 	// the signatures and/or hashes
 	if err := compiler.impl.FetchRemoteResources(
-		&compiler.Options, compiler.fetcher(), compiler.Store, remoteRefs,
+		copts, compiler.fetcher(), compiler.Store, remoteRefs,
 	); err != nil {
 		return nil, fmt.Errorf("fetching remote resources: %w", err)
 	}
@@ -364,7 +376,8 @@ func (compiler *Compiler) CompilePolicyGroup(grp *api.PolicyGroup, funcs ...opti
 		return nil, fmt.Errorf("validating PolicyGroup: %w", err)
 	}
 
-	if err := compiler.resolveSelfReferences(nil, nil, grp, funcs); err != nil {
+	copts, err := compiler.resolveSelfReferences(nil, nil, grp, funcs)
+	if err != nil {
 		return nil, err
 	}
 
@@ -374,7 +387,7 @@ func (compiler *Compiler) CompilePolicyGroup(grp *api.PolicyGroup, funcs ...opti
 	}
 
 	if err := compiler.impl.FetchRemoteResources(
-		&compiler.Options, compiler.fetcher(), compiler.Store, remoteRefs,
+		copts, compiler.fetcher(), compiler.Store, remoteRefs,
 	); err != nil {
 		return nil, fmt.Errorf("fetching remote resources: %w", err)
 	}

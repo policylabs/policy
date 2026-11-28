@@ -192,14 +192,6 @@ func (dci *defaultCompilerImpl) groupRemoteRefs(refs []api.RemoteReference) ([]a
 func (dci *defaultCompilerImpl) fetchRemoteResources(
 	opts *CompilerOptions, fetcher *Fetcher, recurse int, store StorageBackend, refs []api.RemoteReference, fetchCount *int,
 ) error {
-	// A self reference that got here was not resolved: nothing knows where
-	// the document it is in was read from.
-	for _, ref := range refs {
-		if api.IsSelfReference(ref.GetSourceURL()) {
-			return fmt.Errorf("%w: %q", ErrSelfReferenceUnresolved, ref.GetSourceURL())
-		}
-	}
-
 	// Refuse references that are not pinned when asked to, cached or not,
 	// so a document that compiled is reproducible from its references.
 	if opts.RequirePinnedReferences {
@@ -250,6 +242,13 @@ func (dci *defaultCompilerImpl) fetchRemoteResources(
 		if uri == "" {
 			uri = ref.GetLocation().GetUri()
 		}
+
+		// A self reference is read from disk when it was resolved to the
+		// local repository. Any other that got here was not resolved:
+		// nothing knows where the document it is in was read from.
+		if api.IsSelfReference(uri) && (!isLocalSelfReference(ref) || opts.selfRoot == "") {
+			return fmt.Errorf("%w: %q", ErrSelfReferenceUnresolved, uri)
+		}
 		uris = append(uris, uri)
 		newRefs = append(newRefs, ref)
 	}
@@ -267,17 +266,10 @@ func (dci *defaultCompilerImpl) fetchRemoteResources(
 
 	logrus.Debugf("Fetching remote references (depth %d, total fetches: %d): %+v", recurse, *fetchCount, uris)
 
-	// Retrieve the remote data using batched fetching to limit parallelism
 	ctx := context.Background()
-	var data [][]byte
-	var err error
-	if opts.MaxParallelFetches > 0 && len(uris) > opts.MaxParallelFetches {
-		data, err = fetcher.GetGroupBatched(ctx, uris, opts.MaxParallelFetches)
-	} else {
-		data, err = fetcher.GetGroup(ctx, uris)
-	}
+	data, err := dci.fetchReferenceData(ctx, opts, fetcher, uris)
 	if err != nil {
-		return fmt.Errorf("fetching remote data: %w", err)
+		return err
 	}
 
 	// Update fetch count
@@ -297,10 +289,8 @@ func (dci *defaultCompilerImpl) fetchRemoteResources(
 		if err != nil {
 			return fmt.Errorf("storing external ref #%d: %w", i, err)
 		}
-		// The self references of the fetched document resolve against the
-		// location it came from, not against the document referencing it.
-		if err := resolveSelfReferences(ctx, fetcher, uris[i], referenceLocations(set, pcy, grp)); err != nil {
-			return fmt.Errorf("resolving self references of %q: %w", uris[i], err)
+		if err := resolveFetchedSelfReferences(ctx, opts, fetcher, uris[i], set, pcy, grp); err != nil {
+			return err
 		}
 		if set != nil {
 			remoteSets = append(remoteSets, set)
@@ -352,6 +342,45 @@ func (dci *defaultCompilerImpl) fetchRemoteResources(
 
 	// ... or if not, recurse
 	return dci.fetchRemoteResources(opts, fetcher, recurse+1, store, rrefs, fetchCount)
+}
+
+// fetchReferenceData retrieves the data of the references at the uris,
+// in their order: the self references to the local repository from disk
+// and the rest with the fetcher, batched to limit parallelism.
+func (dci *defaultCompilerImpl) fetchReferenceData(
+	ctx context.Context, opts *CompilerOptions, fetcher *Fetcher, uris []string,
+) ([][]byte, error) {
+	data := make([][]byte, len(uris))
+	remote, positions := []string{}, []int{}
+	for i, uri := range uris {
+		if !api.IsSelfReference(uri) {
+			remote = append(remote, uri)
+			positions = append(positions, i)
+			continue
+		}
+		var err error
+		if data[i], err = readLocalSelfReference(opts.selfRoot, uri, fetcher.Limits.MaxInputSize); err != nil {
+			return nil, fmt.Errorf("reading self reference %q: %w", uri, err)
+		}
+	}
+	if len(remote) == 0 {
+		return data, nil
+	}
+
+	var fetched [][]byte
+	var err error
+	if opts.MaxParallelFetches > 0 && len(remote) > opts.MaxParallelFetches {
+		fetched, err = fetcher.GetGroupBatched(ctx, remote, opts.MaxParallelFetches)
+	} else {
+		fetched, err = fetcher.GetGroup(ctx, remote)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("fetching remote data: %w", err)
+	}
+	for i, pos := range positions {
+		data[pos] = fetched[i]
+	}
+	return data, nil
 }
 
 // FetchRemoteResources pulls all the remote data in parallel and stores it
